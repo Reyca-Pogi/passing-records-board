@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faculty Submission Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f9; }
+        .container { max-width: 900px; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { color: #333; margin-bottom: 5px; }
+        .subtext { color: #666; margin-bottom: 25px; }
+        .upload-section { margin-bottom: 25px; padding: 15px; border: 1px dashed #bbb; border-radius: 6px; background-color: #fafafa; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; color: #555; }
+        input[type="file"] { margin: 10px 0; display: block; }
+        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 5px; }
+        button:hover { background: #0056b3; }
+        .btn-folder { background: #28a745; }
+        .btn-folder:hover { background: #218838; }
+        table { width: 100%; margin-top: 25px; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; color: #333; }
+        .status-msg { margin-top: 10px; font-weight: bold; color: #007bff; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Passing Records Bulletin Board</h2>
+
+    <div class="upload-section">
+        <label>Option 1: Upload a Single File</label>
+        <form id="fileForm">
+            <input type="file" id="fileInput" accept=".xlsx, .xls, .csv, .pdf" required />
+            <button type="submit">Scan & Save File</button>
+        </form>
+    </div>
+
+    <div class="upload-section">
+        <label>Option 2: Scan a Whole Batch Folder</label>
+        <form id="folderForm">
+            <input type="file" id="folderInput" webkitdirectory directory multiple required />
+            <button type="submit" class="btn-folder">Scan & Save Folder Contents</button>
+        </form>
+    </div>
+
+    <div id="statusMessage" class="status-msg"></div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Who Passed</th>
+<th>Office</th>
+                <th>Month Submitted</th>
+                <th>Source File Checked</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+            <tr><td colspan="4" style="color:#999; text-align:center;">Loading shared board entries...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const tbody = document.getElementById('tableBody');
+    const statusMessage = document.getElementById('statusMessage');
+
+    // Automatically load all saved data from the server whenever anyone opens the page
+    async function loadSharedBoard() {
+        try {
+            const response = await fetch('/records');
+            const data = await response.json();
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" style="color:#999; text-align:center;">No records have been added to the board yet.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = '';
+            data.forEach(item => {
+                const row = `<tr>
+                    <td><strong>${item.name}</strong></td>
+                    <td>${item.office}</td>
+                    <td>${item.month}</td>
+                    <td style="color: #666; font-size: 12px;">${item.filename}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        } catch (err) {
+            tbody.innerHTML = `<tr><td colspan="4" style="color:red; text-align:center;">Error loading shared records.</td></tr>`;
+        }
+    }
+
+    async function sendFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/upload', { method: 'POST', body: formData });
+            const result = await response.json();
+            return result;
+        } catch (error) {
+            console.error("Network error:", file.name, error);
+            return { status: "error" };
+        }
+    }
+
+    document.getElementById('fileForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fileInput = document.getElementById('fileInput');
+        statusMessage.innerText = "Uploading and verifying file details...";
+
+        const res = await sendFile(fileInput.files[0]);
+        if (res.status === 'exists') {
+            statusMessage.innerText = "Notice: That specific file has already been checked.";
+        } else {
+            statusMessage.innerText = "File logged successfully!";
+            await loadSharedBoard(); // Update the view immediately
+        }
+    });
+
+    document.getElementById('folderForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const folderInput = document.getElementById('folderInput');
+        const files = folderInput.files;
+
+        let validFilesCount = 0;
+        statusMessage.innerText = "Scanning folder files into global database...";
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const nameLower = file.name.toLowerCase();
+            if (nameLower.endsWith('.xlsx') || nameLower.endsWith('.xls') || nameLower.endsWith('.csv') || nameLower.endsWith('.pdf')) {
+                validFilesCount++;
+                await sendFile(file);
+            }
+        }
+        statusMessage.innerText = "Global database update complete!";
+        await loadSharedBoard(); // Reload everything together
+    });
+
+    // Run this right when the page finishes opening
+    loadSharedBoard();
+</script>
+
+</body>
+</html>
