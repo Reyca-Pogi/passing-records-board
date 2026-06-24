@@ -16,7 +16,6 @@ try:
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_json, scopes=scope)
     client = gspread.authorize(creds)
-    # Opens your specific sheet
     sheet = client.open("Faculty Passing Records").sheet1
 except Exception as e:
     print(f"Google Sheet Connection Error: {e}")
@@ -26,9 +25,7 @@ def load_records():
     if sheet is None:
         return []
     try:
-        # Get all records from the Google Sheet rows
         all_rows = sheet.get_all_records()
-        # Rename sheet keys to match what your index.html expects
         formatted_records = []
         for r in all_rows:
             formatted_records.append({
@@ -45,7 +42,6 @@ def save_record(name, office, month, filename):
     if sheet is None:
         return
     try:
-        # Add a new row of data matching your sheet's column order
         sheet.append_row([name, office, month, filename])
     except Exception as e:
         print(f"Failed to save row to Google Sheets: {e}")
@@ -65,23 +61,18 @@ def extract_info_from_pdf(file_bytes):
         
         for line in full_text.split('\n'):
             clean_line = line.strip().lower()
-            
-            # Smarter matching for Name
             if 'name' in clean_line:
                 if ':' in line:
                     person_name = line.split(':', 1)[1].strip()
                 else:
                     idx = clean_line.find('name') + 4
                     person_name = line[idx:].strip()
-            
-            # Smarter matching for Office
             if 'office' in clean_line:
                 if ':' in line:
                     office_name = line.split(':', 1)[1].strip()
                 else:
                     idx = clean_line.find('office') + 6
                     office_name = line[idx:].strip()
-                    
         return person_name, office_name
     except Exception:
         return "Unknown User", "Unknown Office"
@@ -100,7 +91,6 @@ def process_file():
         filename = file.filename
         filename_lower = filename.lower()
         file_bytes = file.read()
-        
         current_month = datetime.now().strftime("%B %Y")
         
         if filename_lower.endswith('.pdf'):
@@ -116,7 +106,6 @@ def process_file():
             person_name = df['name'].iloc[0] if 'name' in df.columns else "Unknown User"
             office_name = df['office'].iloc[0] if 'office' in df.columns else "Unknown Office"
         
-        # Clean layout formatting
         if person_name == "": person_name = "Unknown User"
         if office_name == "": office_name = "Unknown Office"
         person_name = str(person_name).title()
@@ -134,5 +123,21 @@ def process_file():
             "office": office_name,
             "month": current_month
         })
-   except Exception as e:
+    except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/')
+def main_page():
+    secret_password = "facultyboard2026"
+    auth = request.authorization
+    if not auth or auth.username != "faculty" or auth.password != secret_password:
+        return Response(
+            "Login required to access the Passing Records Board.", 
+            401, 
+            {"WWW-Authenticate": 'Basic realm="Login Required"'}
+        )
+    try:
+        with open("index.html", "r") as f:
+            return render_template_string(f.read())
+    except Exception:
+        return "Error: index.html file not found."
