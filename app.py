@@ -1,34 +1,54 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, Response
 from datetime import datetime
 import pandas as pd
 import pypdf
 import os
 import io
+import json
+import gspread
+from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 
-DATA_FILE = "/home/REYCA/mysite/passed_list.csv"
+# --- Google Sheets Setup ---
+try:
+    creds_json = json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(creds_json, scopes=scope)
+    client = gspread.authorize(creds)
+    # Opens your specific sheet
+    sheet = client.open("Faculty Passing Records").sheet1
+except Exception as e:
+    print(f"Google Sheet Connection Error: {e}")
+    sheet = None
 
 def load_records():
-    if not os.path.exists(DATA_FILE):
+    if sheet is None:
         return []
     try:
-        df = pd.read_csv(DATA_FILE)
-        return df.to_dict(orient="records")
+        # Get all records from the Google Sheet rows
+        all_rows = sheet.get_all_records()
+        # Rename sheet keys to match what your index.html expects
+        formatted_records = []
+        for r in all_rows:
+            formatted_records.append({
+                "name": r.get("Who Passed", "Unknown User"),
+                "office": r.get("Office", "Unknown Office"),
+                "month": r.get("Month Submitted", ""),
+                "filename": r.get("Source File Checked", "")
+            })
+        return formatted_records
     except Exception:
         return []
 
 def save_record(name, office, month, filename):
-    new_data = pd.DataFrame([{
-        "name": name,
-        "office": office,
-        "month": month,
-        "filename": filename
-    }])
-    if not os.path.exists(DATA_FILE):
-        new_data.to_csv(DATA_FILE, index=False)
-    else:
-        new_data.to_csv(DATA_FILE, mode='a', header=False, index=False)
+    if sheet is None:
+        return
+    try:
+        # Add a new row of data matching your sheet's column order
+        sheet.append_row([name, office, month, filename])
+    except Exception as e:
+        print(f"Failed to save row to Google Sheets: {e}")
 
 def extract_info_from_pdf(file_bytes):
     try:
@@ -51,7 +71,6 @@ def extract_info_from_pdf(file_bytes):
                 if ':' in line:
                     person_name = line.split(':', 1)[1].strip()
                 else:
-                    # If there's no colon, look for text right after the word 'name'
                     idx = clean_line.find('name') + 4
                     person_name = line[idx:].strip()
             
@@ -97,7 +116,7 @@ def process_file():
             person_name = df['name'].iloc[0] if 'name' in df.columns else "Unknown User"
             office_name = df['office'].iloc[0] if 'office' in df.columns else "Unknown Office"
         
-        # Clean clean layout formatting
+        # Clean layout formatting
         if person_name == "": person_name = "Unknown User"
         if office_name == "": office_name = "Unknown Office"
         person_name = str(person_name).title()
@@ -116,12 +135,4 @@ def process_file():
             "month": current_month
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
-@app.route('/')
-def main_page():
-    try:
-        with open("index.html", "r") as f:
-            return render_template_string(f.read())
-    except Exception:
-        return "Error: index.html file not found."
+        return jsonify({"status":
