@@ -121,7 +121,7 @@ def process_file():
 @app.route('/')
 def main_page():
     try:
-        with open("/home/REYCA/mysite/index.html", "r") as f:
+        with open("index.html", "r") as f:
             return render_template_string(f.read())
     except Exception:
-        return "Error: index.html file not found in mysite folder."
+        return "Error: index.html file not found."
