@@ -134,5 +134,5 @@ def process_file():
             "office": office_name,
             "month": current_month
         })
-    except Exception as e:
-        return jsonify({"status":
+   except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
